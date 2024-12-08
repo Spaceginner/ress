@@ -1,0 +1,12 @@
+[package]
+name = "engine"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+ress = { path = ".." }
+rand = "0.8.5"
+
+[[bin]]
+name = "evolve"
+path = "bin/evolve.rs"

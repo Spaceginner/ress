@@ -84,20 +84,20 @@ impl Default for Board {
     fn default() -> Self {
         Self {
             grid_history: vec![Grid([
-                row!(R N B Q K B N R),
+                row!(R N B Q K B R -),
                 row!(P P P P P P P P),
                 row!(- - - - - - - -),
-                row!(- - - - - - - -),
+                row!(- n - N - - - -),
                 row!(- - - - - - - -),
                 row!(- - - - - - - -),
                 row!(p p p p p p p p),
-                row!(r n b q k b n r),
+                row!(- r b q k b n r),
             ])],
             last_move: None,
             stale_plies: 0,
             white_castle: (true, true),
             black_castle: (true, true),
-            move_color: Color::White,
+            move_color: Color::Black,
             game_outcome: None,
             draw_pending: None,
         }
@@ -125,8 +125,9 @@ impl Board {
                         // first move
                         {
                             if coord.rank == for_color.pawn_rank() {
+                                let path = coord.checked_add_offset(Offset { vertical: for_color.direction(), horizontal: 0 }).unwrap();
                                 let to = coord.checked_add_offset(Offset { vertical: for_color.direction()*2, horizontal: 0 }).unwrap();
-                                if self.grid()[to].is_none() {
+                                if self.grid()[to].is_none() && self.grid()[path].is_none() {
                                     possible_moves.push(Move::Simple { from: coord, to });
                                 };
                             };
@@ -406,8 +407,8 @@ impl Board {
         match r#move {
             Move::Castling { .. } => *castling_rights = (false, false),
             Move::Simple { from: Coordinate { file: File::E, rank  }, .. } if rank == color.home_rank() => *castling_rights = (false, false), 
-            Move::Simple { from: Coordinate { file: File::A, rank }, .. } if rank == color.home_rank() => castling_rights.0 = false,
-            Move::Simple { from: Coordinate { file: File::H, rank }, .. } if rank == color.home_rank() => castling_rights.1 = false,
+            Move::Simple { from: Coordinate { file: File::H, rank }, .. } if rank == color.home_rank() => castling_rights.0 = false,
+            Move::Simple { from: Coordinate { file: File::A, rank }, .. } if rank == color.home_rank() => castling_rights.1 = false,
             _ => {}
         };
     }
@@ -570,6 +571,22 @@ impl PlayerMove {
         };
 
         None
+    }
+}
+
+impl Display for PlayerMove {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Internal(r#move) => write!(f, "{move}")?,
+            Self::Long { from, to, promotion } => {
+                write!(f, "{from}{to}")?;
+                if let Some(piece) = promotion {
+                    write!(f, "{piece}")?;
+                };
+            },
+            _ => todo!()
+        };
+        Ok(())
     }
 }
 
