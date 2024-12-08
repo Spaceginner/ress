@@ -433,8 +433,8 @@ impl Board {
                     return Err(MoveError::IllegalMove);
                 };
             },
-            PlayerMove::Long { from, to } => {
-                if let Some(r#move) = self.possible_moves(self.move_color).into_iter().find(|legal_move| legal_move.resolve_from(self.move_color) == from && legal_move.resolve_to(self.move_color) == to) {
+            PlayerMove::Long { from, to, promotion } => {
+                if let Some(r#move) = self.possible_moves(self.move_color).into_iter().find(|legal_move| legal_move.resolve_from(self.move_color) == from && legal_move.resolve_to(self.move_color) == to && match legal_move { Move::Promotion { piece, .. } => promotion.is_some() && *piece == promotion.unwrap(), _ => true }) {
                     self.grid_history.push(self.grid().clone());
                     advancing_move = self.grid_mut().r#move(r#move, color_to_move);
                     self.handle_castling_rights_update(color_to_move, r#move);
@@ -520,6 +520,7 @@ pub enum PlayerMove {
     Long {
         from: Coordinate,
         to: Coordinate,
+        promotion: Option<PieceKind>,
     },
     Short {
         piece: PieceKind,
@@ -535,7 +536,14 @@ impl PlayerMove {
         if raw.len() == 4 &&
             let Some(from) = Coordinate::parse(&raw[0..2]) &&
             let Some(to) = Coordinate::parse(&raw[2..4]) {
-            return Some(Self::Long { from, to });
+            return Some(Self::Long { from, to, promotion: None });
+        };
+
+        if raw.len() == 5 &&
+            let Some(from) = Coordinate::parse(&raw[0..2]) &&
+            let Some(to) = Coordinate::parse(&raw[2..4]) &&
+            let Some(piece_kind) = PieceKind::parse(&raw[4..5]) {
+            return Some(Self::Long { from, to, promotion: Some(piece_kind) });
         };
 
         match &raw[0..1] {
