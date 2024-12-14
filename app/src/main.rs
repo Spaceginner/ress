@@ -33,7 +33,7 @@ fn main() {
         match &command.as_str()[..command.len()-1] {
             "/enginew" => {
                 if engine.is_none() {
-                    engine = Some(Engine::load("engine.rew"));
+                    engine = Some(Engine::load("engine.rew").unwrap());
                 };
                 
                 engine_white ^= true;
@@ -41,7 +41,7 @@ fn main() {
             },
             "/engineb" => {
                 if engine.is_none() {
-                    engine = Some(Engine::load("engine.rew"));
+                    engine = Some(Engine::load("engine.rew").unwrap());
                 };
                 
                 engine_black ^= true;
@@ -50,13 +50,13 @@ fn main() {
             "/help" => { println!("you can /start, /exit, /enginew or /engineb.") },
             "/start" => {
                 println!("starting game...");
+                // let mut board = Board::from_fen("rnb2bnr/ppp1pppp/5k2/3K4/6Q1/2N5/PPPPPPPP/R1B2BNR b HAha - 0 1").unwrap();
                 let mut board = Board::default();
                 let mut board_changed = true;
                 'game: loop {
                     for color in [board.move_color, board.move_color.the_other()] {
                         if board_changed {
-                            let plies_count = board.grid_history.len();
-                            println!("\nmove #{} (ply #{plies_count}), {color}'s turn:\n{board}", plies_count.div_ceil(2));
+                            println!("{board}");
                             board_changed = false;
                         };
 

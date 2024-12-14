@@ -17,17 +17,17 @@ impl Engine {
         std::fs::File::create(to).unwrap().write_all(&self.weights.0.iter().chain(self.weights.1.iter()).map(|w| w.to_le_bytes()).collect::<Vec<_>>().concat()).unwrap();
     }
     
-    pub fn load(from: &str) -> Self {
-        let mut file = std::fs::File::open(from).unwrap();
+    pub fn load(from: &str) -> Option<Self> {
+        let mut file = std::fs::File::open(from).ok()?;
         let mut buf = vec![0; 38250*4+420*4];
         file.read_exact(&mut buf).unwrap();
         let data = buf.into_iter().array_chunks::<4>().map(f32::from_le_bytes).collect::<Vec<_>>();
-        Self {
+        Some(Self {
             weights: (
                 Box::new(data[0..38250].try_into().unwrap()),
-                Box::new(data[38250..38250+420].try_into().unwrap()),
+                Box::new(data[38250..38250 + 420].try_into().unwrap()),
             )
-        }
+        })
     }
     
     pub fn new_random() -> Self {
@@ -36,8 +36,7 @@ impl Engine {
         let mut coefs = vec![0.0; 38250];
         let mut offsets = vec![0.0; 420];
 
-        coefs.iter_mut().for_each(|c| *c = rng.gen::<f32>()*2.0-1.0);
-        offsets.iter_mut().for_each(|o| *o = rng.gen::<f32>()*2.0-1.0);
+        coefs.iter_mut().chain(offsets.iter_mut()).for_each(|w| *w = rng.gen::<f32>()*2.0-1.0);
         
         Self {
             weights: (coefs.into_boxed_slice().try_into().unwrap(), offsets.into_boxed_slice().try_into().unwrap())
@@ -49,7 +48,8 @@ impl Engine {
     }
 
     pub fn mutate(&mut self) {
-        todo!()
+        let mut rng = rand::thread_rng();
+        self.weights.0.iter_mut().chain(self.weights.1.iter_mut()).for_each(|w| { *w *= rng.gen::<f32>().powi(2)*2.0-1.0; *w += rng.gen::<f32>()*0.2-0.1; });
     }
 
     fn piece_id(piece: PieceKind) -> f32 {

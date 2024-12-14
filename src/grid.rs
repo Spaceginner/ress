@@ -1,9 +1,8 @@
-use std::num::NonZero;
 use std::ops::{Index, IndexMut};
 use crate::coordinate::{Coordinate, File, Move, Rank, Side};
 use crate::piece::{Color, Piece, PieceKind};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Grid(pub [[Option<Piece>; 8]; 8]);
 
 impl Index<Coordinate> for Grid {
@@ -49,8 +48,8 @@ impl Grid {
         }
     }
     
-    pub fn iter_coord(&self) -> IterCoord {
-        IterCoord {
+    pub fn iter_coord(&self) -> Iter {
+        Iter {
             grid: self,
             next: Some(Coordinate { file: File::A, rank: Rank::First }),
             back_next: Some(Coordinate { file: File::A, rank: Rank::Eighth }),
@@ -58,13 +57,13 @@ impl Grid {
     }
 }
 
-pub struct IterCoord<'a> {
+pub struct Iter<'a> {
     grid: &'a Grid,
     next: Option<Coordinate>,
     back_next: Option<Coordinate>,
 }
 
-impl Iterator for IterCoord<'_> {
+impl Iterator for Iter<'_> {
     type Item = (Option<Piece>, Coordinate);
     
     fn next(&mut self) -> Option<Self::Item> {
@@ -78,7 +77,7 @@ impl Iterator for IterCoord<'_> {
     }
 }
 
-impl DoubleEndedIterator for IterCoord<'_> {
+impl DoubleEndedIterator for Iter<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let curr_cord = self.back_next?;
 

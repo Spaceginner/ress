@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Sub};
-use crate::piece::{Color, PieceKind};
+use crate::piece::{Color, Piece, PieceKind};
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 pub enum Rank {
@@ -191,6 +191,10 @@ impl Coordinate {
         }
     }
     
+    pub fn iter() -> Iter {
+        Iter::new()
+    }
+    
     pub fn checked_add_offset(self, offset: Offset) -> Option<Self> {
         Some(Self {
             file: (self.file + offset.horizontal)?,
@@ -305,5 +309,41 @@ impl Display for Move {
             Move::EnPassant { from, to } => write!(f, "~{from}{to}"),
             Move::Castling { side } => write!(f, "c{side}"),
         }
+    }
+}
+
+pub struct Iter {
+    next: Option<Coordinate>,
+    back_next: Option<Coordinate>,
+}
+
+impl Iter {
+    pub fn new() -> Self {
+        Self {
+            next: Some(Coordinate { file: File::A, rank: Rank::First }),
+            back_next: Some(Coordinate { file: File::A, rank: Rank::Eighth }),
+        }
+    }
+}
+
+impl Iterator for Iter {
+    type Item = Coordinate;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let curr_cord = self.next?;
+
+        self.next = curr_cord.next();
+
+        Some(curr_cord)
+    }
+}
+
+impl DoubleEndedIterator for Iter {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let curr_cord = self.back_next?;
+
+        self.back_next = curr_cord.back_next();
+
+        Some(curr_cord)
     }
 }

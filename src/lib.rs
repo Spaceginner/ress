@@ -84,20 +84,20 @@ impl Default for Board {
     fn default() -> Self {
         Self {
             grid_history: vec![Grid([
-                row!(R N B Q K B R -),
+                row!(R N B Q K B N R),
                 row!(P P P P P P P P),
                 row!(- - - - - - - -),
-                row!(- n - N - - - -),
+                row!(- - - - - - - -),
                 row!(- - - - - - - -),
                 row!(- - - - - - - -),
                 row!(p p p p p p p p),
-                row!(- r b q k b n r),
+                row!(r n b q k b n r),
             ])],
             last_move: None,
             stale_plies: 0,
             white_castle: (true, true),
             black_castle: (true, true),
-            move_color: Color::Black,
+            move_color: Color::White,
             game_outcome: None,
             draw_pending: None,
         }
@@ -105,6 +105,89 @@ impl Default for Board {
 }
 
 impl Board {
+    // fixme proper handling of incorrect FENs and / (separators)
+    pub fn from_fen(raw: &str) -> Option<Self> {
+        let mut grid = Grid::default();
+        let mut white_castle = (false, false);
+        let mut black_castle = (false, false);
+        let mut move_color = Color::White;
+        let mut stale_plies = 0;
+
+        #[derive(Debug, Clone, Copy)]
+        enum ParsingState {
+            Position, ColorToMove, Useless, Castling, StalePlies
+        }
+
+        impl ParsingState {
+            pub fn next(self) -> Option<Self> {
+                Some(match self {
+                    Self::Position => Self::ColorToMove,
+                    Self::ColorToMove => Self::Castling,
+                    Self::Castling => Self::Useless,
+                    Self::Useless => Self::StalePlies,
+                    Self::StalePlies => None?,
+                })
+            }
+        }
+
+        let mut state = ParsingState::Position;
+        let mut coord_iter = Coordinate::iter().rev();
+        let mut last_buf = String::new();
+        for c in (0..raw.len()).map(|i| &raw[i..=i]) {
+            if c == " " {
+                if let Some(next) = state.next() {
+                    state = next;
+                    continue;
+                } else {
+                    break;
+                };
+            };
+
+            match state {
+                ParsingState::Position => {
+                    if let Ok(skip) = c.parse::<usize>() && skip > 0 && skip < 9 {
+                        for _ in 0..skip {
+                            let _ = coord_iter.next();
+                        };
+                    } else if let Some(piece) = Piece::parse(c) {
+                        grid[coord_iter.next().unwrap()] = Some(piece);
+                    };
+                },
+                ParsingState::ColorToMove => {
+                    // todo move to Color::parse
+                    move_color = match c {
+                        "b" => Color::Black,
+                        _ => Color::White,
+                    };
+                },
+                ParsingState::Castling => {
+                    match c {
+                        "K" => white_castle.1 = true,
+                        "k" => black_castle.1 = true,
+                        "Q" => white_castle.0 = true,
+                        "q" => black_castle.0 = true,
+                        _ => {},
+                    };
+                },
+                ParsingState::StalePlies => {
+                    last_buf.push_str(c);
+                },
+                ParsingState::Useless => {}
+            };
+        };
+        
+        stale_plies = last_buf.parse().unwrap();
+
+        Some(Self {
+            grid_history: vec![grid],
+            white_castle,
+            black_castle,
+            move_color,
+            stale_plies,
+            ..Default::default()
+        })
+    }
+
     pub fn grid(&self) -> &Grid {
         unsafe { self.grid_history.last().unwrap_unchecked() }
     }
@@ -138,7 +221,7 @@ impl Board {
                             let _: Option<_> = try {
                                 let to = coord.checked_add_offset(Offset { vertical: for_color.direction(), horizontal: 0 })?;
                                 if self.grid()[to].is_none() {
-                                    if coord.rank != for_color.prepromotion_rank() {
+                                    if to.rank != for_color.promotion_rank() {
                                         possible_moves.push(Move::Simple { from: coord, to });
                                     } else {
                                         for piece_kind in [PieceKind::Queen, PieceKind::Rook, PieceKind::Bishop, PieceKind::Knight] {
@@ -156,7 +239,7 @@ impl Board {
                                     let to = to?;
 
                                     if let Some(Piece { color, .. }) = self.grid()[to] && color == for_color.the_other() {
-                                        if coord.rank != color.prepromotion_rank() {
+                                        if to.rank != for_color.promotion_rank() {
                                             possible_moves.push(Move::Simple { from: coord, to });
                                         } else {
                                             for piece_kind in [PieceKind::Queen, PieceKind::Rook, PieceKind::Bishop, PieceKind::Knight] {
@@ -294,7 +377,7 @@ impl Board {
 
     pub fn is_under_attack(&self, by: Color, mut coord: Coordinate, after: Option<(Color, Move, bool)>) -> bool {
         // todo optional check if attacking piece is pinned
-
+        
         let mut grid = self.grid().clone();
         
         if let Some((color, r#move, adapt)) = after {
@@ -305,7 +388,7 @@ impl Board {
         };
 
         // check for pawn attacks
-        for coord in [-1, 1].map(|file_of| coord.checked_add_offset(Offset { vertical: coord.rank as i8 - by.direction(), horizontal: coord.file as i8 + file_of })) {
+        for coord in [-1, 1].map(|file_of| coord.checked_add_offset(Offset { vertical: -by.direction(), horizontal: file_of })) {
             let _: Option<_> = try {
                 if let Some(Piece { kind: PieceKind::Pawn, color }) = grid[coord?] && color == by {
                     return true;
@@ -335,7 +418,7 @@ impl Board {
             let _: Option<_> = try {
                 let mut check_coord = coord.checked_add_offset(of.into())?;
 
-                while self.grid()[check_coord].is_none() {
+                while grid[check_coord].is_none() {
                     check_coord = check_coord.checked_add_offset(of.into())?;
                 };
 
@@ -353,11 +436,25 @@ impl Board {
             let _: Option<_> = try {
                 let mut check_coord = coord.checked_add_offset(of.into())?;
 
-                while self.grid()[check_coord].is_none() {
+                while grid[check_coord].is_none() {
                     check_coord = check_coord.checked_add_offset(of.into())?;
                 };
 
                 if let Some(Piece { kind: PieceKind::Bishop | PieceKind::Queen, color }) = grid[check_coord] && color == by {
+                    return true;
+                };
+            };
+        };
+
+        // check for king attacks
+        for coord in [
+            (0, 1), (0, -1),
+            (1, 0), (-1, 0),
+            (1, 1), (1, -1),
+            (-1, 1), (-1, -1),
+        ].map(|of| coord.checked_add_offset(of.into())) {
+            let _: Option<_> = try {
+                if let Some(Piece { kind: PieceKind::King, color }) = grid[coord?] && color == by {
                     return true;
                 };
             };
@@ -372,7 +469,14 @@ impl Board {
     }
 
     pub fn possible_moves(&self, color: Color) -> Vec<Move> {
-        let king_coord = self.find_piece(Piece { kind: PieceKind::King, color }).unwrap();
+        let king_coord = self.find_piece(Piece { kind: PieceKind::King, color }).unwrap_or_else(|| {
+            eprintln!("{self}");
+            eprintln!("states before:");
+            for grid in self.grid_history.iter().rev().skip(1) {
+                eprintln!("{grid}");
+            };
+            panic!("KING HAS GONE WILD");
+        });
         self.unchecked_for_check_possible_moves(color)
             .into_iter()
             .filter(|r#move| !self.is_under_attack(color.the_other(), king_coord, Some((color, *r#move, true))))
@@ -592,6 +696,12 @@ impl Display for PlayerMove {
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\nmove #{} (ply #{}), {}'s turn:\n{}", self.stale_plies, self.stale_plies.div_ceil(2), self.move_color, self.grid())
+    }
+}
+
+impl Display for Grid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "  ")?;
         for rank in 0..8 {
             write!(f, "{} ", File::try_from(rank).unwrap())?;
@@ -599,7 +709,7 @@ impl Display for Board {
         writeln!(f)?;
 
         let mut even_row = false;
-        for (i, (piece, Coordinate { rank, .. })) in self.grid().iter_coord().rev().enumerate() {
+        for (i, (piece, Coordinate { rank, .. })) in self.iter_coord().rev().enumerate() {
             if i % 8 == 0 {
                 even_row = !even_row;
                 if i != 0 {

@@ -151,3 +151,23 @@ impl Display for Piece {
         } as u32 + offset).unwrap())
     }
 }
+
+impl Piece {
+    pub fn parse(raw: &str) -> Option<Self> {
+        Some(match raw {
+            "P" => Self { kind: PieceKind::Pawn, color: Color::White },
+            "N" => Self { kind: PieceKind::Knight, color: Color::White },
+            "B" => Self { kind: PieceKind::Bishop, color: Color::White },
+            "R" => Self { kind: PieceKind::Rook, color: Color::White },
+            "Q" => Self { kind: PieceKind::Queen, color: Color::White },
+            "K" => Self { kind: PieceKind::King, color: Color::White },
+            "p" => Self { kind: PieceKind::Pawn, color: Color::Black },
+            "n" => Self { kind: PieceKind::Knight, color: Color::Black },
+            "b" => Self { kind: PieceKind::Bishop, color: Color::Black },
+            "r" => Self { kind: PieceKind::Rook, color: Color::Black },
+            "q" => Self { kind: PieceKind::Queen, color: Color::Black },
+            "k" => Self { kind: PieceKind::King, color: Color::Black },
+            _ => None?
+        })
+    }
+}
