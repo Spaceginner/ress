@@ -33,7 +33,7 @@ fn battle(white: &Engine, black: &Engine) -> (i32, i32) {
             let _ = board.play_move(r#move);
         };
 
-        let plies_count_score = (board.grid_history.len()/4) as i32;
+        let plies_count_score = board.grid_history.len() as i32;
         score.0 += plies_count_score;
         score.1 += plies_count_score;
 
@@ -55,39 +55,71 @@ fn battle(white: &Engine, black: &Engine) -> (i32, i32) {
 }
 
 
-const POOL_SIZE: usize = 100;
+fn find_best(pool: Vec<Engine>) -> Engine {
+    let score_atom = Vec::from_iter((0..pool.len()).map(|_| AtomicI32::new(0)));
+    for (i, engine_a) in pool.iter().enumerate() {
+        pool.par_iter().enumerate()
+            .filter(|(j, _)| i != *j)
+            .map(|(j, engine_b)| (j, battle(engine_a, engine_b)))
+            .for_each(|(j, (a, b))| {
+                score_atom[i].fetch_add(a, Ordering::Relaxed);
+                score_atom[j].fetch_add(b, Ordering::Relaxed);
+            });
+    };
+    
+    let score = score_atom.into_iter().map(|s| s.into_inner()).collect::<Vec<_>>();
+    pool.into_iter().enumerate().max_by_key(|(i, _)| score[*i]).unwrap().1
+}
+
+
+fn create_pool(engine: &Engine, mutation_coef: Option<f32>, size: usize) -> Vec<Engine> {
+    (0..size).map(|_| {
+        let mut engine = engine.clone();
+        engine.mutate(mutation_coef);
+        engine
+    }).collect()
+}
+
+
+fn create_pools(engine: &Engine, mutation_coef: Option<f32>, size: usize, count: usize) -> Vec<Vec<Engine>> {
+    (0..count).into_par_iter().map(|_| create_pool(engine, mutation_coef, size)).collect()
+}
+
+
+const POOL_SIZE: usize = 15;
+const POOLS_COUNT: usize = 20;
+const HYPER_POOL_SIZE: usize = 10;
 
 
 fn main() {
-    let mut engine = Engine::load("engine.rew").unwrap_or_else(Engine::new_random);
+    let random;
+    let mut engine;
+    if let Some(eng) = Engine::load("engine.rew") {
+        engine = eng;
+        random = false;
+    } else {
+        engine = Engine::new_random();
+        random = true;
+    };
+    
     let mut epoch_i = 0;
     loop {
         engine.save(&format!("engine_epoch{epoch_i}.rew"));
-        println!("epoch {epoch_i}");
-        let mut pool = Vec::new();
-        println!("generating pool");
-        for _ in 1..POOL_SIZE {
-            let mut engine = engine.clone();
-            engine.mutate();
-            pool.push((engine, 0));
-        };
-        pool.push((engine, 0));
-
-        let score_change = [const { AtomicI32::new(0) }; POOL_SIZE];
-        for (i, (engine_a, _)) in pool.iter().enumerate() {
-            println!("battling engine {i}");
-            pool.par_iter().enumerate()
-                .filter(|(j, _)| i != *j)
-                .map(|(j, (engine_b, _))| (j, battle(engine_a, engine_b)))
-                .for_each(|(j, (a, b))| { score_change[i].fetch_add(a, Ordering::Relaxed); score_change[j].fetch_add(b, Ordering::Relaxed); });
-        };
-        dbg!(&score_change);
-        
-        for (i, change) in score_change.into_iter().enumerate() {
-            pool[i].1 += change.into_inner();
-        };
-        
-        engine = pool.into_iter().max_by_key(|e| e.1).unwrap().0;
         epoch_i += 1;
+        println!("epoch {epoch_i}");
+        
+        let hyper_pool = (0..HYPER_POOL_SIZE).into_par_iter().map(|i| {
+            println!("generating pools (#{i})...");
+            let pools = create_pools(&engine, (epoch_i != 1 && !random).then_some(0.8), POOL_SIZE, POOLS_COUNT);
+            
+            println!("battling pools (#{i})...");
+            let super_pool = pools.into_par_iter().map(find_best).collect::<Vec<_>>();
+            
+            println!("battling super pool (#{i})...");
+            find_best(super_pool)
+        }).collect::<Vec<_>>();
+        
+        println!("battling hyper pool...");
+        engine = find_best(hyper_pool);
     };
 }

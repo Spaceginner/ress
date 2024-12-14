@@ -47,9 +47,21 @@ impl Engine {
         todo!()
     }
 
-    pub fn mutate(&mut self) {
+    pub fn mutate(&mut self, coef: Option<f32>) {
         let mut rng = rand::thread_rng();
-        self.weights.0.iter_mut().chain(self.weights.1.iter_mut()).for_each(|w| { *w *= rng.gen::<f32>().powi(2)*2.0-1.0; *w += rng.gen::<f32>()*0.2-0.1; });
+        self.weights.0.iter_mut().chain(self.weights.1.iter_mut()).for_each(|w| {
+            if let Some(coef) = coef {
+                let portion = *w*rng.gen::<f32>().powi(2)/2.0*coef;
+                if rng.gen() {
+                    *w += portion;
+                } else {
+                    *w -= portion;
+                };
+                *w += (rng.gen::<f32>()*2.0-1.0)*coef;
+            } else {
+                *w = rng.gen();
+            };
+        });
     }
 
     fn piece_id(piece: PieceKind) -> f32 {
